@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="logo.png" alt="Logotip de Comunitat Valenciana Multivalue ca / es" width="220">
+  <img src="logo.png" alt="Logotip de Comunitat Valenciana Multivalue ca / es" width="195">
 </p>
 
-# Comunitat Valenciana Multivalue ca / es
+<h1 align="center">Comunitat Valenciana Multivalue ca / es</h1>
 
 Visor web per revisar noms multivalor en català i castellà d'elements d'OpenStreetMap a la Comunitat Valenciana. Permet analitzar els camps `name`, `official_name`, `name:ca` i `name:es`, localitzar possibles incoherències i obrir els elements per revisar-los o editar-los.
 
