@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="ca">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Comunitat Valenciana Multivalue ca / es</title>
+    <meta
+      name="description"
+      content="Visor de revisió de noms multivalor ca / es d’OpenStreetMap a la Comunitat Valenciana."
+    />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/maplibre-gl@6.11.1/dist/maplibre-gl.css"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="overlay">
+      <div id="countdown">
+        <div id="ovTop">
+          <span id="ovTitle"></span>
+          <button id="ovClose" title="Tancar">✖</button>
+        </div>
+        <pre id="ovLog"></pre>
+      </div>
+    </div>
+    <div id="app" data-mode="await">
+      <h1>
+        Comunitat Valenciana Multivalue ca / es
+        <a
+          href="https://wiki.openstreetmap.org/wiki/Ca:Comunitat_Valenciana#Topon%C3%ADmia_de_la_Comunitat_Valenciana"
+          target="_blank"
+          rel="noopener"
+        >
+          📖
+        </a>
+        <span id="infoIcon">ℹ️</span>
+        <span id="testIcon" title="Tester">🧪</span>
+      </h1>
+      <div id="modeBar" role="group" aria-label="Mode de revisió">
+        <label class="modeOpt">
+          <input type="radio" name="mode" value="name" />
+          <span>Mode name multivalor</span>
+        </label>
+        <label class="modeOpt">
+          <input type="radio" name="mode" value="official" />
+          <span>Mode official_name multivalor</span>
+        </label>
+      </div>
+      <div id="modeHint">Tria un mode per a iniciar el processament</div>
+      <div id="filters">
+        <label>
+          <input type="checkbox" id="toggleYellow" />
+          <span id="countYellow"></span>
+          <span class="dot yellow"></span>
+          PredLingCA
+        </label>
+        <label>
+          <input type="checkbox" id="toggleRed" />
+          <span id="countRed"></span>
+          <span class="dot red"></span>
+          PredLingES
+        </label>
+        <label>
+          <input type="checkbox" id="togglePurple" checked />
+          <span id="countPurple"></span>
+          <span class="dot purple"></span>
+          NoCoincident
+        </label>
+        <label>
+          <input type="checkbox" id="toggleBrown" checked />
+          <span id="countBrown"></span>
+          <span class="dot brown"></span>
+          Falta :ca/:es
+        </label>
+        <label>
+          <input type="checkbox" id="toggleOrange" checked />
+          <span id="countOrange"></span>
+          <span class="dot orange"></span>
+          "_/_" No estàndard
+        </label>
+        <label>
+          <input type="checkbox" id="toggleCyan" checked />
+          <span id="countCyan"></span>
+          <span class="dot cyan"></span>
+          Més d'un "/"
+        </label>
+        <label>
+          <input type="checkbox" id="togglePink" checked />
+          <span id="countPink"></span>
+          <span class="dot pink"></span>
+          Duplicat
+        </label>
+      </div>
+      <div id="map"></div>
+      <div id="listsContainer">
+        <div id="list">
+          <div id="list-header">
+            <span class="hKey colBase">name</span>
+            <span class="colName">name</span>
+            <span>name:ca</span>
+            <span>name:es</span>
+          </div>
+          <div class="emptyMsg" data-for="list">
+            ✅ Tot OK · No hi ha errors a mostrar
+          </div>
+          <ul></ul>
+        </div>
+        <div id="missingList">
+          <div id="missingList-header">
+            <span class="hKey colBase">name</span>
+            <span class="colName">name</span>
+            <span>name:ca</span>
+            <span>name:es</span>
+          </div>
+          <div class="emptyMsg" data-for="missing">
+            ✅ Tot OK · No falten :ca/:es
+          </div>
+          <ul></ul>
+        </div>
+      </div>
+      <div
+        id="exceptionsModal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Excepcions"
+      >
+        <div id="exceptionsBox">
+          <div class="tTop">
+            <div class="tTitle">Excepcions</div>
+            <button id="exceptionsClose" title="Tancar">✖</button>
+          </div>
+          <div id="exceptionsBody"></div>
+          <div class="tHint">Esc ↩ tanca · Clic fora també tanca</div>
+        </div>
+      </div>
+      <div id="testerModal" role="dialog" aria-modal="true" aria-label="Tester">
+        <div id="testerBox">
+          <div class="tTop">
+            <div class="tTitle">Tester · verificacions</div>
+            <button id="testerClose" title="Tancar">✖</button>
+          </div>
+          <div class="tTabs" role="tablist" aria-label="Modes tester">
+            <button
+              class="tTab on"
+              data-tm="name"
+              role="tab"
+              aria-selected="true"
+            >
+              name
+            </button>
+            <button
+              class="tTab"
+              data-tm="official"
+              role="tab"
+              aria-selected="false"
+            >
+              official_name
+            </button>
+          </div>
+          <div class="tPane on" data-tp="name" role="tabpanel">
+            <div class="tGrid">
+              <label>
+                name (base)
+                <input
+                  id="t_name_base"
+                  placeholder="Ex: Carrer Nou / Calle Nueva"
+                />
+              </label>
+              <label>
+                name:ca
+                <input id="t_name_ca" placeholder="Ex: Carrer Nou" />
+              </label>
+              <label>
+                name:es
+                <input id="t_name_es" placeholder="Ex: Calle Nueva" />
+              </label>
+            </div>
+            <div class="tOut">
+              <div class="tBadge" id="t_name_badge"></div>
+              <div class="tPrev" id="t_name_prev"></div>
+              <pre class="tLog" id="t_name_log"></pre>
+            </div>
+          </div>
+          <div class="tPane" data-tp="official" role="tabpanel">
+            <div class="tGrid">
+              <label>
+                official_name (base)
+                <input
+                  id="t_off_base"
+                  placeholder="Ex: Carrer Nou / Calle Nueva"
+                />
+              </label>
+              <label>
+                name (per comprovar)
+                <input id="t_off_name" placeholder="Ex: Carrer Nou" />
+              </label>
+              <label>
+                name:ca
+                <input id="t_off_ca" placeholder="Ex: Carrer Nou" />
+              </label>
+              <label>
+                name:es
+                <input id="t_off_es" placeholder="Ex: Calle Nueva" />
+              </label>
+            </div>
+            <div class="tOut">
+              <div class="tBadge" id="t_off_badge"></div>
+              <div class="tPrev" id="t_off_prev"></div>
+              <pre class="tLog" id="t_off_log"></pre>
+            </div>
+          </div>
+          <div class="tHint">
+            Esc ↩ tanca · Clic fora també tanca · El tester no afecta al mapa.
+          </div>
+        </div>
+      </div>
+    </div>
+    <script src="config.js" defer></script>
+    <script src="script.js" defer></script>
+  </body>
+</html>
