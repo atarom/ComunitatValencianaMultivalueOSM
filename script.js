@@ -1,22 +1,39 @@
 (async () => {
-  const maplibregl =
-    await import("https://unpkg.com/maplibre-gl@6.11.1/dist/maplibre-gl.mjs");
+  const loadOpenLayers = async () => {
+    if (window.ol?.layer?.WebGLVector) return window.ol;
+    for (const url of ["https://cdn.jsdelivr.net/npm/ol@10.10.0/dist/ol.js", "https://unpkg.com/ol@10.10.0/dist/ol.js"]) {
+      try {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = url;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+        if (window.ol?.layer?.WebGLVector) return window.ol;
+      } catch (e) {}
+    }
+    throw Error("No s'ha pogut carregar OpenLayers");
+  };
+  const ol = await loadOpenLayers();
   const config = window.APP_CONFIG || {};
   let m,
     popup,
+    popupElement,
+    popupContent,
+    vectorSource,
+    vectorLayer,
     mode = "",
     boot = false,
-    op = [],
-    opIndex = 0,
-    opUrl = "",
     samples = null,
     loadSeq = 0,
     loadCtrl = null,
-    overlayTimer = 0;
+    overlayTimer = 0,
+    cooldownTicker = 0;
+  const cooldownUntil = { name: 0, official: 0 };
   const ex = { name: [], official: [] };
   const $ = (id) => document.getElementById(id);
   const $$ = (s) => [...document.querySelectorAll(s)];
-  const SRC = "review-points";
   const records = new Map();
   const CAT = {
     cY: {
@@ -130,10 +147,13 @@
     `${template || ""}`.replace(/\{(\w+)\}/g, (_, key) => `${values[key] ?? ""}`);
   const timeoutSeconds = () =>
     Math.max(1, Number(config.overpass?.timeoutSeconds) || 35);
-  const makeQuery = (tm) =>
-    renderTemplate(config.overpass?.queries?.[tm], {
-      timeout: timeoutSeconds()
-    });
+  const makeQuery = (tm) => config.postpass?.queries?.[tm] || "";
+  const postpassTimeout = () =>
+    Math.max(1, Number(config.postpass?.timeoutSeconds) || 120);
+  const postpassETA = () =>
+    Math.max(1, Number(config.postpass?.etaSeconds) || 35);
+  const cacheTTL = () =>
+    Math.max(0, Number(config.postpass?.cacheSeconds) || 180);
   const exceptions = () => ex[mode] || [];
   const coords = (o) => {
     const c = o?.center || o || {};
@@ -141,7 +161,6 @@
   };
   const validCoord = (c) => Number.isFinite(c.x) && Number.isFinite(c.y);
   const uid = (o) => `${o.type}/${o.id}`;
-  const layer = (k) => `review-${k}`;
   const cancelOverlayTimer = () => {
     if (overlayTimer) {
       clearTimeout(overlayTimer);
@@ -164,15 +183,53 @@
     }, 1500);
   };
   const timer = (seconds) => {
-    let s = Math.max(0, Math.ceil(seconds));
-    const paint = () => ($("ovTitle").textContent = `Carregant... ${s}s`);
+    const deadline = Date.now() + seconds * 1000;
+    let id = 0;
+    const paint = () => {
+      const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      $("ovTitle").textContent = remaining
+        ? `Carregant... ${remaining}s`
+        : "Esperant resposta de Postpass…";
+      if (!remaining && id) clearInterval(id);
+    };
     paint();
-    const id = setInterval(() => {
-      s--;
-      if (s < 0) clearInterval(id);
-      else paint();
-    }, 1000);
+    id = setInterval(paint, 1000);
     return () => clearInterval(id);
+  };
+  const cooldownRemaining = (tm) =>
+    Math.max(0, Math.ceil((cooldownUntil[tm] - Date.now()) / 1000));
+  const refreshCooldownUI = () => {
+    $$("#modeBar .modeOpt").forEach((label) => {
+      const tm = label.querySelector("input").value,
+        remaining = cooldownRemaining(tm),
+        badge = label.querySelector(".cooldownTime");
+      label.classList.toggle("cooling", remaining > 0);
+      if (mode === tm)
+        label.querySelector("span").firstChild.textContent = remaining
+          ? `En memòria cau · ${tm === "official" ? "official_name" : "name"}`
+          : `Tornar a processar · ${tm === "official" ? "official_name" : "name"}`;
+      if (remaining) {
+        label.style.setProperty(
+          "--cooldown-progress",
+          Math.min(1, (cooldownUntil[tm] - Date.now()) / (cacheTTL() * 1000))
+        );
+        badge.textContent = `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, "0")}`;
+        label.title = `Dades en memòria cau · ${remaining}s per a tornar a consultar Postpass`;
+      } else {
+        badge.textContent = "";
+        label.style.removeProperty("--cooldown-progress");
+        label.removeAttribute("title");
+      }
+    });
+    if (!cooldownRemaining("name") && !cooldownRemaining("official") && cooldownTicker) {
+      clearInterval(cooldownTicker);
+      cooldownTicker = 0;
+    }
+  };
+  const setCooldown = (tm, expiresAt) => {
+    cooldownUntil[tm] = Math.max(cooldownUntil[tm], expiresAt);
+    if (!cooldownTicker) cooldownTicker = setInterval(refreshCooldownUI, 1000);
+    refreshCooldownUI();
   };
   const modeUI = () => {
     $("app").dataset.mode = mode || "await";
@@ -187,12 +244,14 @@
       const i = l.querySelector("input"),
         s = l.querySelector("span"),
         k = i.value === "official" ? "official_name" : "name";
-      s.textContent = !mode
+      const title = !mode
         ? `Mode ${k} multivalor`
         : i.value === mode
           ? `Tornar a processar · ${k}`
           : `Canviar a · ${k}`;
+      s.innerHTML = `${title}<small class="cooldownTime" aria-hidden="true"></small>`;
     });
+    refreshCooldownUI();
   };
   const formatBase = (n, ca, es) => {
     let html = "",
@@ -287,13 +346,13 @@
   const josm = (o) => fetch(`http://127.0.0.1:8111/load_object?objects=${o}`);
   const josmAll = (q) =>
     fetch(
-      `http://127.0.0.1:8111/import?url=${encodeURIComponent((opUrl || op[0]) + "?data=" + q)}`
+      `http://127.0.0.1:8111/import?url=${encodeURIComponent(config.overpass.instance + "?data=" + q)}`
     );
   const makeLegend = () => {
     const root = document.createElement("div"),
       pane = document.createElement("div"),
       filters = $("filters");
-    root.className = "maplibregl-ctrl legendCtl";
+    root.className = "ol-unselectable ol-control legendCtl";
     pane.className = "legendPane";
     root.appendChild(pane);
     filters.classList.add("legendItems");
@@ -329,15 +388,6 @@
     );
     return root;
   };
-  class LegendControl {
-    onAdd() {
-      return (this._container = makeLegend());
-    }
-    onRemove() {
-      this._container?.remove();
-      this._container = null;
-    }
-  }
   const setEmpty = (box, on) => {
     const msg = box.querySelector(".emptyMsg"),
       list = box.querySelector("ul");
@@ -345,12 +395,12 @@
     if (list) list.style.display = on ? "none" : "block";
   };
   const closePopup = () => {
-    popup?.remove();
-    popup = null;
+    popup?.setPosition(undefined);
+    if (popupElement) popupElement.hidden = true;
   };
   const clear = () => {
     if (!boot) return;
-    m.getSource(SRC)?.setData({ type: "FeatureCollection", features: [] });
+    vectorSource?.clear(true);
     records.clear();
     $$("#list ul,#missingList ul").forEach((u) => (u.innerHTML = ""));
     [$("list"), $("missingList")].forEach((x) => setEmpty(x, false));
@@ -366,14 +416,14 @@
   };
   const cacheRequest = (tm, q) =>
     new Request(
-      `${location.origin}${location.pathname}?overpass-cache=${encodeURIComponent(`${tm}-${cacheHash(q)}`)}`
+      `${location.origin}${location.pathname}?postpass-cache=${encodeURIComponent(`${tm}-${cacheHash(q)}`)}`
     );
   const cacheGet = async (tm, q) => {
     if (!("caches" in window)) throw Error("Cache Storage no està disponible");
-    const ttl = Math.max(0, Number(config.overpass?.cacheSeconds) || 60);
+    const ttl = cacheTTL();
     if (!ttl) return null;
     const cache = await caches.open(
-      config.overpass?.cacheName || "cv-multivalue-overpass-v1"
+      config.postpass?.cacheName || "cv-multivalue-postpass-v1"
     );
     const request = cacheRequest(tm, q);
     const response = await cache.match(request);
@@ -384,91 +434,85 @@
       await cache.delete(request);
       return null;
     }
-    return { data: payload.data, ageSeconds: Math.floor(age / 1000) };
+    return { data: payload.data, ageSeconds: Math.floor(age / 1000), expiresAt: Number(payload.timestamp) + ttl * 1000 };
   };
   const cacheSet = async (tm, q, data) => {
     if (!("caches" in window)) throw Error("Cache Storage no està disponible");
     const cache = await caches.open(
-      config.overpass?.cacheName || "cv-multivalue-overpass-v1"
+      config.postpass?.cacheName || "cv-multivalue-postpass-v1"
     );
+    const timestamp = Date.now();
     await cache.put(
       cacheRequest(tm, q),
-      new Response(JSON.stringify({ timestamp: Date.now(), data }), {
+      new Response(JSON.stringify({ timestamp, data }), {
         headers: { "Content-Type": "application/json" }
       })
     );
+    return timestamp + cacheTTL() * 1000;
   };
-  const overpassFetch = async (url, q, ms, signal) => {
+  const postpassFetch = async (q, signal) => {
     const ctrl = new AbortController(),
       abort = () => ctrl.abort(),
-      timeout = setTimeout(() => ctrl.abort(), ms);
+      timeout = setTimeout(abort, postpassTimeout() * 1000);
     if (signal?.aborted) ctrl.abort();
     else signal?.addEventListener("abort", abort, { once: true });
     try {
-      const r = await fetch(url + "?data=" + encodeURIComponent(q), {
+      const response = await fetch(config.postpass.endpoint, {
+        method: "POST",
+        body: new URLSearchParams({ data: q }),
         signal: ctrl.signal
       });
-      if (!r.ok) throw Error("HTTP " + r.status);
-      return await r.json();
+      if (!response.ok) {
+        const message = await response.text();
+        throw Error(`Postpass HTTP ${response.status}: ${message.slice(0, 250)}`);
+      }
+      const data = await response.json();
+      if (data?.type !== "FeatureCollection" || !Array.isArray(data.features))
+        throw Error("Postpass: resposta GeoJSON no vàlida");
+      const elements = data.features.map((feature) => {
+        const p = feature.properties || {},
+          c = feature.geometry?.coordinates,
+          type = { N: "node", W: "way", R: "relation" }[p.osm_type];
+        const id = Number(p.osm_id);
+        if (!type || !Number.isSafeInteger(id) || id <= 0 || feature.geometry?.type !== "Point" || !Array.isArray(c) || c.length !== 2)
+          throw Error("Postpass: element sense identificador o geometria vàlids");
+        const lon = Number(c[0]),
+          lat = Number(c[1]);
+        if (!Number.isFinite(lon) || !Number.isFinite(lat) || !p.tags || typeof p.tags !== "object" || Array.isArray(p.tags))
+          throw Error("Postpass: element sense coordenades o etiquetes vàlides");
+        return { type, id, tags: p.tags, lon, lat };
+      });
+      return { elements };
     } finally {
       clearTimeout(timeout);
       signal?.removeEventListener("abort", abort);
     }
   };
-  const overpass = async (q, signal) => {
-    if (!op.length) throw Error("No hi ha instàncies d'Overpass");
-    let last;
-    for (let k = 0; k < op.length; k++) {
-      if (signal.aborted) throw new DOMException("Aborted", "AbortError");
-      const i = (opIndex + k) % op.length,
-        url = op[i],
-        stop = timer(timeoutSeconds());
-      showOverlay("Consultant Overpass…", `→ ${i + 1}/${op.length} ${url}`);
-      try {
-        const data = await overpassFetch(
-          url,
-          q,
-          timeoutSeconds() * 1000,
-          signal
-        );
-        stop();
-        if (signal.aborted) throw new DOMException("Aborted", "AbortError");
-        opIndex = i;
-        opUrl = url;
-        try {
-          localStorage.setItem("opI", opIndex);
-        } catch (e) {}
-        showOverlay(null, `✓ OK ${url}`);
-        return data;
-      } catch (e) {
-        stop();
-        if (signal.aborted) throw e;
-        last = e;
-        showOverlay(
-          null,
-          `✖ Error ${url} · ${e?.name === "AbortError" ? "temps excedit" : e?.message || e}`
-        );
-        showOverlay(null, "↪ Passant a la següent instància…");
-      }
-    }
-    throw last || Error("Overpass: totes les instàncies han fallat");
-  };
-  const overpassCached = async (tm, q, signal) => {
+  const postpassCached = async (tm, q, signal) => {
     try {
       const cached = await cacheGet(tm, q);
       if (cached) {
+        setCooldown(tm, cached.expiresAt);
         showOverlay(
           "Memòria cau",
-          `✓ Dades locals de fa ${cached.ageSeconds}s · no es consulta Overpass`
+          `✓ Dades locals de fa ${cached.ageSeconds}s · no es consulta Postpass`
         );
         return cached.data;
       }
     } catch (e) {
       showOverlay(null, `⚠ Memòria cau: ${e?.message || e}`);
     }
-    const data = await overpass(q, signal);
+    const stop = timer(postpassETA());
+    showOverlay("Consultant Postpass…", `→ ${config.postpass.endpoint}`);
+    let data;
     try {
-      await cacheSet(tm, q, data);
+      data = await postpassFetch(q, signal);
+      showOverlay(null, "✓ OK Postpass");
+    } finally {
+      stop();
+    }
+    try {
+      setCooldown(tm, await cacheSet(tm, q, data));
     } catch (e) {
       showOverlay(null, `⚠ No s'ha pogut guardar la memòria cau: ${e?.message || e}`);
     }
@@ -571,85 +615,70 @@
     });
   };
   const setLayer = (k, on) => {
-    const id = layer(k);
-    if (m?.getLayer(id))
-      m.setLayoutProperty(id, "visibility", on ? "visible" : "none");
+    vectorLayer?.updateStyleVariables({ [`show${k}`]: on ? 1 : 0 });
+    if (!on) closePopup();
   };
-  const openRecord = (o, lngLat) => {
+  const openRecord = (o, fromMap = false) => {
     if (!o) return;
     const c = coords(o);
-    if (!validCoord(c)) return;
-    closePopup();
-    const p = new maplibregl.Popup({
-      maxWidth: "460px",
-      closeButton: true,
-      closeOnClick: true
-    })
-      .setLngLat(lngLat || [c.x, c.y])
-      .setHTML(popupHtml(o))
-      .addTo(m);
-    popup = p;
-    p.on("close", () => {
-      if (popup === p) popup = null;
-    });
+    if (!validCoord(c) || !popup) return;
+    popupContent.innerHTML = popupHtml(o);
+    popup.setPositioning(fromMap ? "bottom-center" : "center-center");
+    popup.setOffset(fromMap ? [0, -12] : [0, 0]);
+    popupElement.style.maxHeight = fromMap ? "" : `${Math.min(420, Math.max(100, m.getTargetElement().clientHeight - 24))}px`;
+    popupElement.hidden = false;
+    popup.setPosition(ol.proj.fromLonLat([c.x, c.y]));
+    if (fromMap) popup.panIntoView({ animation: { duration: 180 }, margin: 16 });
   };
   const addLayers = () => {
-    m.addSource(SRC, {
-      type: "geojson",
-      data: { type: "FeatureCollection", features: [] }
-    });
+    vectorSource = new ol.source.Vector({ wrapX: false });
+    const variables = Object.fromEntries(Object.keys(CAT).map((k) => [`show${k}`, $(CAT[k].toggle).checked ? 1 : 0]));
+    const styles = Object.entries(CAT).map(([k, c]) => ({
+      filter: ["all", ["==", ["get", "key"], k], ["==", ["var", `show${k}`], 1]],
+      style: {
+        "circle-radius": 6,
+        "circle-fill-color": c.color,
+        "circle-stroke-color": "#111111",
+        "circle-stroke-width": 1.25,
+        "circle-opacity": 0.85
+      }
+    }));
+    vectorLayer = new ol.layer.WebGLVector({ source: vectorSource, variables, style: styles });
+    m.addLayer(vectorLayer);
     Object.entries(CAT).forEach(([k, c]) => {
-      const id = layer(k);
-      m.addLayer({
-        id,
-        type: "circle",
-        source: SRC,
-        filter: ["==", ["get", "key"], k],
-        layout: { visibility: $(c.toggle).checked ? "visible" : "none" },
-        paint: {
-          "circle-radius": 6,
-          "circle-color": c.color,
-          "circle-stroke-color": "#111",
-          "circle-stroke-width": 1.25,
-          "circle-opacity": 0.85
-        }
-      });
-      m.on("click", id, (e) => {
-        const o = records.get(e.features?.[0]?.properties.uid);
-        if (o) openRecord(o, e.lngLat);
-      });
-      m.on("mouseenter", id, () => (m.getCanvas().style.cursor = "pointer"));
-      m.on("mouseleave", id, () => (m.getCanvas().style.cursor = ""));
       $(c.toggle).onchange = () => setLayer(k, $(c.toggle).checked);
     });
-  };
-  const collapseAttribution = () => {
-    const el = m?.getContainer().querySelector(".maplibregl-ctrl-attrib");
-    if (!el) return;
-    el.open = false;
-    el.removeAttribute("open");
-    el.classList.remove("maplibregl-compact-show");
-  };
-  const localizeMapLabels = () => {
-    const language = config.map?.language || "ca";
-    const sourceLayers = new Set(config.map?.localizableSourceLayers || []);
-    (m.getStyle()?.layers || []).forEach((l) => {
-      const field = l.layout?.["text-field"];
-      if (
-        l.type !== "symbol" ||
-        !field ||
-        !sourceLayers.has(l["source-layer"]) ||
-        !JSON.stringify(field).includes("name")
-      )
+    m.on("singleclick", (event) => {
+      const feature = m.forEachFeatureAtPixel(event.pixel, (f, lyr) => lyr === vectorLayer ? f : null, { hitTolerance: 3 });
+      const key = feature?.get("key");
+      if (!key || !$(CAT[key]?.toggle).checked) {
+        closePopup();
         return;
-      try {
-        m.setLayoutProperty(l.id, "text-field", [
-          "coalesce",
-          ["get", `name:${language}`],
-          ["get", "name"]
-        ]);
-      } catch (e) {}
+      }
+      const o = records.get(feature.get("uid"));
+      if (o) openRecord(o, true);
+      else closePopup();
     });
+    m.on("pointermove", (event) => {
+      if (event.dragging) return;
+      m.getTargetElement().style.cursor = m.hasFeatureAtPixel(event.pixel, { layerFilter: (lyr) => lyr === vectorLayer }) ? "pointer" : "";
+    });
+  };
+  const addPopup = () => {
+    popupElement = document.createElement("div");
+    popupElement.className = "cv-ol-popup";
+    popupElement.hidden = true;
+    const close = document.createElement("button");
+    close.className = "cv-ol-close";
+    close.type = "button";
+    close.textContent = "×";
+    close.setAttribute("aria-label", "Tancar popup");
+    popupContent = document.createElement("div");
+    popupContent.className = "cv-ol-content";
+    popupElement.append(close, popupContent);
+    close.onclick = closePopup;
+    popup = new ol.Overlay({ element: popupElement, offset: [0, -12], positioning: "bottom-center", autoPan: false });
+    m.addOverlay(popup);
   };
   const webgl2Available = () => {
     try {
@@ -688,9 +717,9 @@
       }
     });
     $("modeBar").addEventListener("click", (e) => {
-      const l = e.target.closest(".modeOpt"),
-        i = l?.querySelector("input");
-      if (l && boot && mode && i?.value === mode) load();
+      const i = e.target;
+      if (i.matches?.('input[name="mode"]') && boot && mode && i.value === mode && !cooldownRemaining(mode))
+        load();
     });
     document.addEventListener("click", (e) => {
       const t = e.target;
@@ -712,46 +741,32 @@
   const init = () => {
     if (m) return;
     if (!webgl2Available()) {
-      showOverlay(
-        "Error",
-        "WebGL2 no està disponible en este navegador o dispositiu.",
-        true
-      );
+      showOverlay("Error", "WebGL2 no està disponible en este navegador o dispositiu.", true);
       return;
     }
     try {
-      m = new maplibregl.Map({
-        container: "map",
-        minZoom: Number(config.map?.minZoom) || 5,
-        maxZoom: Number(config.map?.maxZoom) || 19,
-        center: config.map?.center || [-0.4, 38.3],
-        zoom: Number(config.map?.zoom) || 8,
-        attributionControl: false,
-        style: config.map?.styleUrl || "https://tiles.openfreemap.org/styles/dark"
+      m = new ol.Map({
+        target: "map",
+        layers: [new ol.layer.Tile({ className: "dark-base-layer", source: new ol.source.OSM() })],
+        view: new ol.View({
+          center: ol.proj.fromLonLat(config.map?.center || [-0.4, 38.3]),
+          zoom: Number(config.map?.zoom) || 8,
+          minZoom: Number(config.map?.minZoom) || 5,
+          maxZoom: Number(config.map?.maxZoom) || 19
+        })
       });
-    } catch (e) {
-      m = null;
-      showOverlay("Error", `MapLibre/WebGL2: ${e?.message || e}`, true);
-      return;
-    }
-    m.addControl(
-      new maplibregl.NavigationControl({ showCompass: false }),
-      "top-left"
-    );
-    const attribution = new maplibregl.AttributionControl({ compact: true });
-    m.addControl(attribution, "bottom-right");
-    collapseAttribution();
-    queueMicrotask(collapseAttribution);
-    requestAnimationFrame(collapseAttribution);
-    m.addControl(new LegendControl(), "top-right");
-    m.on("load", () => {
-      collapseAttribution();
-      localizeMapLabels();
+      m.addControl(new ol.control.Control({ element: makeLegend() }));
       addLayers();
+      addPopup();
       boot = true;
+      requestAnimationFrame(() => m.updateSize());
       load();
-    });
-    m.once("idle", collapseAttribution);
+    } catch (e) {
+      m?.setTarget(undefined);
+      m = null;
+      boot = false;
+      showOverlay("Error", `OpenLayers/WebGL2: ${e?.message || e}`, true);
+    }
   };
   const load = async () => {
     if (!mode || !boot) return;
@@ -768,16 +783,15 @@
     );
     try {
       const q = makeQuery(mode);
-      if (!q) throw Error(`No hi ha consulta Overpass configurada per a ${mode}`);
-      const { elements = [] } = await overpassCached(mode, q, ctrl.signal);
+      if (!q) throw Error(`No hi ha consulta Postpass configurada per a ${mode}`);
+      const { elements = [] } = await postpassCached(mode, q, ctrl.signal);
       if (run !== loadSeq || ctrl.signal.aborted) return;
       const blocked = exceptions(),
         arr = elements.filter((o) => {
           const s = value(o?.tags || {}).trim();
           return s && !blocked.includes(s);
         }),
-        features = [],
-        bounds = new maplibregl.LngLatBounds();
+        features = [];
       arr.forEach((o) => {
         const c = coords(o);
         if (!validCoord(c)) return;
@@ -785,15 +799,14 @@
           id = uid(o);
         records.set(id, o);
         count[key]++;
-        features.push({
-          type: "Feature",
-          geometry: { type: "Point", coordinates: [c.x, c.y] },
-          properties: { uid: id, key }
-        });
-        bounds.extend([c.x, c.y]);
+        features.push(new ol.Feature({
+          geometry: new ol.geom.Point(ol.proj.fromLonLat([c.x, c.y])),
+          uid: id,
+          key
+        }));
       });
       if (run !== loadSeq || ctrl.signal.aborted) return;
-      m.getSource(SRC).setData({ type: "FeatureCollection", features });
+      vectorSource.addFeatures(features);
       const errors = arr.filter((o) => {
         const t = o.tags || {},
           s = value(t);
@@ -816,7 +829,7 @@
       Object.entries(CAT).forEach(
         ([k, c]) => ($(c.count).textContent = `(${count[k]}) `)
       );
-      if (features.length) m.fitBounds(bounds, { padding: 40 });
+      if (features.length) m.getView().fit(vectorSource.getExtent(), { padding: [40, 40, 40, 40], maxZoom: 17 });
       showOverlay("Completat.");
       hideOverlay();
     } catch (e) {
@@ -850,23 +863,30 @@
       li.onclick = () => {
         const c = coords(o);
         if (!validCoord(c)) return;
-        m.jumpTo({ center: [c.x, c.y], zoom: m.getMaxZoom() });
-        openRecord(o, [c.x, c.y]);
+        closePopup();
+        const view = m.getView();
+        view.cancelAnimations();
+        view.setZoom(view.getMaxZoom());
+        view.setCenter(ol.proj.fromLonLat([c.x, c.y]));
+        openRecord(o);
       };
       ul.appendChild(li);
     });
   };
+  const restoreCooldowns = async () => {
+    await Promise.all(["name", "official"].map(async (tm) => {
+      try {
+        const cached = await cacheGet(tm, makeQuery(tm));
+        if (cached) setCooldown(tm, cached.expiresAt);
+      } catch (e) {}
+    }));
+  };
   const start = () => {
     ex.name = config.exceptions?.name || [];
     ex.official = config.exceptions?.official || [];
-    op = config.overpass?.instances || [];
     samples = config.testerSamples || null;
-    try {
-      const i = parseInt(localStorage.getItem("opI") || 0, 10);
-      if (Number.isFinite(i)) opIndex = Math.max(0, Math.min(op.length - 1, i));
-    } catch (e) {}
-    opUrl = op[opIndex] || op[0] || "";
     modeUI();
+    restoreCooldowns();
     initTester();
     bindUI();
   };
@@ -879,5 +899,5 @@
     log = document.getElementById("ovLog");
   if (overlay) overlay.style.display = "flex";
   if (title) title.textContent = "Error";
-  if (log) log.textContent = `MapLibre: ${e?.message || e}`;
+  if (log) log.textContent = `OpenLayers: ${e?.message || e}`;
 });

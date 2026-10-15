@@ -1,39 +1,68 @@
 window.APP_CONFIG = {
+  postpass: {
+    endpoint: "https://postpass.geofabrik.de/api/interpreter",
+    timeoutSeconds: 120,
+    etaSeconds: 35,
+    cacheSeconds: 180,
+    cacheName: "cv-multivalue-postpass-v1",
+    queries: {
+      name: `WITH region AS (
+SELECT geom
+FROM postpass_polygon
+WHERE osm_type = 'R' AND osm_id = 349043
+)
+SELECT DISTINCT ON (e.osm_type, e.osm_id)
+e.osm_type, e.osm_id, e.tags, ST_Centroid(ST_Envelope(e.geom)) AS geom
+FROM postpass_pointlinepolygon e
+JOIN region r ON e.geom && r.geom AND ST_Intersects(e.geom, r.geom)
+WHERE e.geom && ST_MakeEnvelope(-2.5, 37, 2, 42, 4326)
+AND e.tags->>'name' LIKE '%/%'
+AND (
+e.tags ? 'leisure'
+OR (
+e.tags ? 'highway'
+AND NOT (e.tags ? 'name:left')
+AND NOT (e.tags ? 'name:right')
+AND NOT (e.tags ? 'public_transport')
+)
+)
+ORDER BY e.osm_type, e.osm_id`,
+      official: `WITH region AS (
+SELECT geom
+FROM postpass_polygon
+WHERE osm_type = 'R' AND osm_id = 349043
+)
+SELECT DISTINCT ON (e.osm_type, e.osm_id)
+e.osm_type, e.osm_id, e.tags, ST_Centroid(ST_Envelope(e.geom)) AS geom
+FROM postpass_pointlinepolygon e
+JOIN region r ON e.geom && r.geom AND ST_Intersects(e.geom, r.geom)
+WHERE e.geom && ST_MakeEnvelope(-2.5, 37, 2, 42, 4326)
+AND e.tags->>'official_name' LIKE '%/%'
+AND (
+e.tags ? 'leisure'
+OR (
+e.tags ? 'highway'
+AND NOT (e.tags ? 'name:left')
+AND NOT (e.tags ? 'name:right')
+AND NOT (e.tags ? 'public_transport')
+)
+)
+ORDER BY e.osm_type, e.osm_id`
+    }
+  },
   overpass: {
     timeoutSeconds: 35,
-    cacheSeconds: 60,
-    cacheName: "cv-multivalue-overpass-v1",
-    instances: [
-      "https://overpass-api.de/api/interpreter",
-      "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
-      "https://overpass.private.coffee/api/interpreter"
-    ],
-    queries: {
-      name: '[out:json][timeout:{timeout}][maxsize:128Mi];rel(349043);map_to_area->.sa;(nwr[leisure][name~"/"](area.sa);nwr[highway][!"name:left"][!"name:right"][!public_transport][name~"/"](area.sa););out qt tags center;',
-      official: '[out:json][timeout:{timeout}][maxsize:128Mi];rel(349043);map_to_area->.sa;(nwr[leisure][official_name~"/"](area.sa);nwr[highway][!"name:left"][!"name:right"][!public_transport][official_name~"/"](area.sa););out qt tags center;'
-    },
+    instance: "https://overpass-api.de/api/interpreter",
     objectQueries: {
       name: '[out:xml][timeout:{timeout}];nwr["name"="{name}"]["name:ca"="{ca}"]["name:es"="{es}"];(._;>;);out meta;',
       official: '[out:xml][timeout:{timeout}];nwr["official_name"="{officialName}"]["name"="{name}"]["name:ca"="{ca}"]["name:es"="{es}"];(._;>;);out meta;'
     }
   },
   map: {
-    styleUrl: "https://tiles.openfreemap.org/styles/dark",
-    language: "ca",
     center: [-0.4, 38.3],
     zoom: 8,
     minZoom: 5,
-    maxZoom: 19,
-    localizableSourceLayers: [
-      "aerodrome_label",
-      "mountain_peak",
-      "park",
-      "place",
-      "poi",
-      "transportation_name",
-      "water_name",
-      "waterway"
-    ]
+    maxZoom: 19
   },
   exceptions: {
     name: [

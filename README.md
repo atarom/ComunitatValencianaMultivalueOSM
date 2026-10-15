@@ -18,7 +18,8 @@ Permet analitzar els camps `name`, `official_name`, `name:ca` i `name:es` d'elem
 
 ## Tecnologies i dades
 
-- [MapLibre GL JS](https://maplibre.org/) renderització interactiva del mapa.
-- [OpenFreeMap](https://openfreemap.org/) — mapa base vectorial, amb etiquetes que prioritzen `name:ca` i utilitzen `name` com a alternativa.
-- [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) — consulta dels elements d'OpenStreetMap que s'han de revisar.
+- [OpenLayers](https://openlayers.org/) — visualització WebGL dels elements, filtres i interacció cartogràfica.
+- [OpenStreetMap](https://www.openstreetmap.org/) — mapa base en estil fosc, sense clau API.
+- [Postpass](https://postpass.geofabrik.de/) — consultes SQL dels elements d’OpenStreetMap que s’han de revisar.
+- [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) — recuperació dels elements complets per a JOSM i revisió a Overpass Turbo.
 - [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) — dades cartogràfiques disponibles sota llicència ODbL.
