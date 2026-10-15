@@ -354,7 +354,21 @@
       filters = $("filters");
     root.className = "ol-unselectable ol-control legendCtl";
     pane.className = "legendPane";
-    root.appendChild(pane);
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "legendToggle";
+    toggle.textContent = "Capes";
+    toggle.setAttribute("aria-controls", "filters");
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.onclick = () => {
+      const open = root.classList.toggle("expanded");
+      toggle.setAttribute("aria-expanded", String(open));
+    };
+    window.matchMedia("(max-width: 700px), (max-height: 520px) and (max-width: 960px)").addEventListener("change", () => {
+      root.classList.remove("expanded");
+      toggle.setAttribute("aria-expanded", "false");
+    });
+    root.append(toggle, pane);
     filters.classList.add("legendItems");
     filters.style.display = "flex";
     $$("#filters label").forEach((l) => {
@@ -379,7 +393,7 @@
         .forEach((x) => l.appendChild(x));
     });
     pane.appendChild(filters);
-    ["mousedown", "dblclick", "wheel"].forEach((type) =>
+    ["pointerdown", "mousedown", "dblclick", "wheel"].forEach((type) =>
       root.addEventListener(
         type,
         (e) => e.stopPropagation(),

@@ -682,6 +682,72 @@ h1 a:hover {
   box-shadow: 0 10px 24px #0008;
   backdrop-filter: none;
 }
+#map .legendToggle {
+  display: none;
+}
+@media (max-width: 700px), (max-height: 520px) and (max-width: 960px) {
+  #map .legendCtl {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    max-width: calc(100% - 64px);
+    max-height: 58%;
+  }
+  #map .legendCtl .legendToggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    width: auto;
+    min-width: 112px;
+    height: 44px;
+    padding: 0 12px;
+    font: 700 13px/1 Arial, sans-serif;
+    cursor: pointer;
+  }
+  #map .legendCtl .legendToggle::after {
+    content: "▾";
+    font-size: 15px;
+    transition: transform 0.16s ease;
+  }
+  #map .legendCtl.expanded .legendToggle::after {
+    transform: rotate(180deg);
+  }
+  #map .legendCtl .legendPane {
+    display: none;
+    width: min(270px, calc(100vw - 96px));
+    max-width: 100%;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  #map .legendCtl.expanded .legendPane {
+    display: block;
+  }
+  #map .legendCtl .legendItems {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    max-height: none;
+    padding: 6px;
+    gap: 4px;
+  }
+  #map .legendCtl .legendItems label {
+    grid-template-columns: 18px 10px minmax(0, 1fr) 44px;
+    gap: 5px;
+    min-height: 42px;
+    padding: 6px;
+    font-size: 12px;
+  }
+  #map .legendCtl .legendItems span[id^="count"] {
+    min-width: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #map .legendCtl .legendToggle::after {
+    transition: none;
+  }
+}
 .cv-ol-popup {
   position: absolute;
   width: min(440px, 84vw);
@@ -801,6 +867,24 @@ h1 a:hover {
   }
   .tGrid {
     grid-template-columns: 1fr;
+  }
+}
+@media (max-height: 520px) and (max-width: 960px) {
+  #listsContainer {
+    flex-direction: row;
+    flex: 0 0 110px;
+    height: 110px;
+    min-height: 110px;
+    max-height: 110px;
+  }
+}
+@media (max-height: 520px) and (max-width: 600px) {
+  #listsContainer {
+    flex-direction: column;
+    flex-basis: 160px;
+    height: 160px;
+    min-height: 160px;
+    max-height: 160px;
   }
 }
 @keyframes neoPulse {
