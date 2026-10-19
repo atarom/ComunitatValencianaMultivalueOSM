@@ -1,7 +1,7 @@
 (async () => {
   const loadOpenLayers = async () => {
     if (window.ol?.layer?.WebGLVector) return window.ol;
-    for (const url of ["https://cdn.jsdelivr.net/npm/ol@10.10.0/dist/ol.js", "https://unpkg.com/ol@10.10.0/dist/ol.js"]) {
+    for (const url of ["https://cdn.jsdelivr.net/npm/ol@10.11.0/dist/ol.js", "https://unpkg.com/ol@10.11.0/dist/ol.js"]) {
       try {
         await new Promise((resolve, reject) => {
           const script = document.createElement("script");
@@ -762,7 +762,7 @@
     try {
       m = new ol.Map({
         target: "map",
-        layers: [new ol.layer.Tile({ className: "dark-base-layer", source: new ol.source.OSM() })],
+        layers: [new ol.layer.Tile({ className: "dark-base-layer", source: new ol.source.OSM({ referrerPolicy: "strict-origin-when-cross-origin" }) })],
         view: new ol.View({
           center: ol.proj.fromLonLat(config.map?.center || [-0.4, 38.3]),
           zoom: Number(config.map?.zoom) || 8,
