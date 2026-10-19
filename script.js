@@ -253,6 +253,7 @@
     });
     refreshCooldownUI();
   };
+  const formatMultivalue = (s) => esc(s).replaceAll(" / ", "<br>");
   const formatBase = (n, ca, es) => {
     let html = "",
       text = "";
@@ -270,7 +271,7 @@
           i < n.length - 1 &&
           n[i + 1] === " " &&
           (i + 2 === n.length || n[i + 2] !== " ");
-      html += left && right ? " / " : '<span class="errorSlash">/</span>';
+      html += left && right ? "<br>" : '<span class="errorSlash">/</span>';
     });
     const s = text.trim();
     return (
@@ -872,8 +873,8 @@
         li = document.createElement("li"),
         base = s ? formatBase(s, ca, es) : "🚫";
       li.innerHTML = missing
-        ? `<span class="colBase">${base}</span><span class="colName ${nameOk ? "match" : "nomatch"}">${esc(name)}</span><span>${esc(ca)}</span><span>${esc(es)}</span>`
-        : `<span class="colBase">${base}</span><span class="colName ${nameOk ? "match" : "nomatch"}">${esc(name)}</span><span class="${p?.includes(ca) ? "match" : "nomatch"}">${esc(ca)}</span><span class="${p?.includes(es) ? "match" : "nomatch"}">${esc(es)}</span>`;
+        ? `<span class="colBase">${base}</span><span class="colName ${nameOk ? "match" : "nomatch"}">${formatMultivalue(name)}</span><span>${formatMultivalue(ca)}</span><span>${formatMultivalue(es)}</span>`
+        : `<span class="colBase">${base}</span><span class="colName ${nameOk ? "match" : "nomatch"}">${formatMultivalue(name)}</span><span class="${p?.includes(ca) ? "match" : "nomatch"}">${formatMultivalue(ca)}</span><span class="${p?.includes(es) ? "match" : "nomatch"}">${formatMultivalue(es)}</span>`;
       li.onclick = () => {
         const c = coords(o);
         if (!validCoord(c)) return;
