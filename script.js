@@ -1,3 +1,4 @@
+import { validate } from "./validation.js";
 (async () => {
   const loadOpenLayers = async () => {
     if (window.ol?.layer?.WebGLVector) return window.ol;
@@ -67,14 +68,14 @@
     cO: {
       color: "#FFD580",
       test: "#ffd08a",
-      label: '"_/_" No estàndard',
+      label: "Separador no estàndard",
       count: "countOrange",
       toggle: "toggleOrange"
     },
     cM: {
       color: "#4dd0e1",
       test: "#4dd0e1",
-      label: 'Més d\'un "/"',
+      label: "Més d'un separador",
       count: "countCyan",
       toggle: "toggleCyan"
     },
@@ -107,12 +108,6 @@
   };
   const baseKey = () => (mode === "official" ? "official_name" : "name");
   const value = (t) => t?.[baseKey()] || "";
-  const parts = (s) =>
-    `${s ?? ""}`
-      .split("/")
-      .map((x) => x.trim())
-      .filter(Boolean);
-  const slashCount = (s) => (`${s ?? ""}`.match(/\//g) || []).length;
   const esc = (s) =>
     `${s ?? ""}`.replace(
       /[&<>"']/g,
@@ -132,17 +127,6 @@
       .replace(/\r/g, "\\r")
       .replace(/\n/g, "\\n")
       .replace(/\t/g, "\\t");
-  const badSep = (s) =>
-    [...s].some(
-      (c, i) =>
-        c === "/" &&
-        (!i ||
-          i === s.length - 1 ||
-          s[i - 1] !== " " ||
-          s[i + 1] !== " " ||
-          s[i - 2] === " " ||
-          s[i + 2] === " ")
-    );
   const renderTemplate = (template, values) =>
     `${template || ""}`.replace(/\{(\w+)\}/g, (_, key) => `${values[key] ?? ""}`);
   const timeoutSeconds = () =>
@@ -253,64 +237,20 @@
     });
     refreshCooldownUI();
   };
-  const formatMultivalue = (s) => esc(s).replaceAll(" / ", "<br>");
-  const formatBase = (n, ca, es) => {
-    let html = "",
-      text = "";
-    [...n].forEach((ch, i) => {
-      if (ch !== "/") {
-        text += ch;
-        return;
-      }
+  const formatMultivalue = (s) => `${s ?? ""}`.split(/ \/ |;/).map(esc).join("<br>");
+  const formatBase = (result, ca, es) => {
+    const piece = (text) => {
       const s = text.trim();
-      if (s)
-        html += `<span class="${s === ca || s === es ? "match" : "nomatch"}">${esc(s)}</span>`;
-      text = "";
-      const left = i > 0 && n[i - 1] === " " && (i < 2 || n[i - 2] !== " "),
-        right =
-          i < n.length - 1 &&
-          n[i + 1] === " " &&
-          (i + 2 === n.length || n[i + 2] !== " ");
-      html += left && right ? "<br>" : '<span class="errorSlash">/</span>';
+      return s ? `<span class="${s === ca || s === es ? "match" : "nomatch"}">${esc(s)}</span>` : "";
+    };
+    let html = "",
+      from = 0;
+    result.separators.forEach(({ index, char, valid }) => {
+      html += piece(result.base.slice(from, index));
+      html += valid ? "<br>" : `<span class="errorSlash">${esc(char)}</span>`;
+      from = index + 1;
     });
-    const s = text.trim();
-    return (
-      html +
-      (s
-        ? `<span class="${s === ca || s === es ? "match" : "nomatch"}">${esc(s)}</span>`
-        : "")
-    );
-  };
-  const officialNameOk = (t) => {
-    if (mode !== "official") return true;
-    const p = parts(value(t)),
-      n = (t.name || "").trim(),
-      ca = (t["name:ca"] || "").trim(),
-      es = (t["name:es"] || "").trim(),
-      first = p[0];
-    return !!(
-      p.length &&
-      n &&
-      ((first === ca && n === ca) || (first === es && n === es))
-    );
-  };
-  const category = (t) => {
-    const s = value(t);
-    if (!s) return "cP";
-    if (slashCount(s) > 1) return "cM";
-    if (badSep(s)) return "cO";
-    if (!t["name:ca"] || !t["name:es"]) return "cB";
-    const p = parts(s),
-      ca = t["name:ca"].trim(),
-      es = t["name:es"].trim();
-    if (p.length > 1 && p.every((x) => x === p[0])) return "cD";
-    if (!(p.includes(ca) && p.includes(es))) return "cP";
-    const first = p[0] === ca ? "ca" : p[0] === es ? "es" : "";
-    return !first || (mode === "official" && !officialNameOk(t))
-      ? "cP"
-      : first === "ca"
-        ? "cY"
-        : "cR";
+    return html + piece(result.base.slice(from));
   };
   const queryObject = (e) => {
     const t = e.tags || {};
@@ -533,61 +473,33 @@
     }
     return data;
   };
-  const withMode = (next, fn) => {
-    const prev = mode;
-    mode = next;
-    const out = fn();
-    mode = prev;
-    return out;
-  };
   const testerRun = (tm, base, name, ca, es) => {
-    const t = { "name:ca": ca || "", "name:es": es || "" };
+    const tags = { "name:ca": ca || "", "name:es": es || "" };
     if (tm === "official") {
-      t.official_name = base || "";
-      t.name = name || "";
-    } else t.name = base || "";
-    return withMode(tm, () => {
-      const s = value(t),
-        sl = slashCount(s),
-        bad = badSep(s),
-        caT = t["name:ca"].trim(),
-        esT = t["name:es"].trim(),
-        missing = !caT || !esT,
-        p = parts(s),
-        includes = !!(s && caT && esT && p.includes(caT) && p.includes(esT)),
-        dup = !!(
-          s &&
-          !bad &&
-          sl <= 1 &&
-          caT &&
-          esT &&
-          p.length > 1 &&
-          p.every((x) => x === p[0])
-        ),
-        exp = tm !== "official" || officialNameOk(t),
-        key = category(t);
-      return {
-        key,
-        preview: s ? formatBase(s, caT || "🚫", esT || "🚫") : "🚫",
-        log: [
-          `baseKey=${baseKey()}`,
-          `base="${s}"`,
-          `slashes=${sl}${sl > 1 ? " → ERROR(cyan)" : ""}`,
-          `badSep="_/_"=${bad ? 1 : 0}${bad ? " → ERROR(orange)" : ""}`,
-          `name:ca="${caT}"`,
-          `name:es="${esT}"`,
-          `missing(:ca/:es)=${missing ? 1 : 0}${missing ? " → ERROR(brown)" : ""}`,
-          `dup(parts)= ${dup ? 1 : 0}${dup ? " → ERROR(pink)" : ""}`,
-          `includes(ca,es)=${includes ? 1 : 0}${!missing && !bad && !dup && sl <= 1 && s && !includes ? " → ERROR(purple)" : ""}`,
-          tm === "official"
-            ? `expNameOk=${exp ? 1 : 0}${!exp ? " → ERROR(purple)" : ""}`
-            : 0,
-          `group=${CAT[key].label}`
-        ]
-          .filter(Boolean)
-          .join("\n")
-      };
-    });
+      tags.official_name = base || "";
+      tags.name = name || "";
+    } else tags.name = base || "";
+    const result = validate(tags, tm);
+    const { base: s, ca: caT, es: esT, separatorCount: sl, badSep: bad, missing, duplicate: dup, includes, officialNameOk: exp, key } = result;
+    return {
+      key,
+      preview: s ? formatBase(result, caT || "🚫", esT || "🚫") : "🚫",
+      log: [
+        `baseKey=${tm === "official" ? "official_name" : "name"}`,
+        `base="${s}"`,
+        `separators=${sl}${sl > 1 ? " → ERROR(cyan)" : ""}`,
+        `badSep=${bad ? 1 : 0}${bad ? " → ERROR(orange)" : ""}`,
+        `name:ca="${caT}"`,
+        `name:es="${esT}"`,
+        `missing(:ca/:es)=${missing ? 1 : 0}${missing ? " → ERROR(brown)" : ""}`,
+        `dup(parts)= ${dup ? 1 : 0}${dup ? " → ERROR(pink)" : ""}`,
+        `includes(ca,es)=${includes ? 1 : 0}${!missing && !bad && !dup && sl <= 1 && s && !includes ? " → ERROR(purple)" : ""}`,
+        tm === "official"
+          ? `expNameOk=${exp ? 1 : 0}${!exp ? " → ERROR(purple)" : ""}`
+          : 0,
+        `group=${CAT[key].label}`
+      ].filter(Boolean).join("\n")
+    };
   };
   const paintTester = (tm) => {
     const f = TEST[tm],
@@ -802,15 +714,15 @@
       const { elements = [] } = await postpassCached(mode, q, ctrl.signal);
       if (run !== loadSeq || ctrl.signal.aborted) return;
       const blocked = exceptions(),
-        arr = elements.filter((o) => {
+        reviews = elements.filter((o) => {
           const s = value(o?.tags || {}).trim();
           return s && !blocked.includes(s);
-        }),
+        }).map((o) => ({ record: o, result: validate(o.tags || {}, mode) })),
         features = [];
-      arr.forEach((o) => {
+      reviews.forEach(({ record: o, result }) => {
         const c = coords(o);
         if (!validCoord(c)) return;
-        const key = category(o.tags || {}),
+        const key = result.key,
           id = uid(o);
         records.set(id, o);
         count[key]++;
@@ -822,25 +734,8 @@
       });
       if (run !== loadSeq || ctrl.signal.aborted) return;
       vectorSource.addFeatures(features);
-      const errors = arr.filter((o) => {
-        const t = o.tags || {},
-          s = value(t);
-        if (!t["name:ca"] || !t["name:es"]) return false;
-        if (!s || slashCount(s) > 1 || badSep(s)) return true;
-        const p = parts(s),
-          ca = t["name:ca"].trim(),
-          es = t["name:es"].trim();
-        return (
-          (p.length > 1 && p.every((x) => x === p[0])) ||
-          !(p.includes(ca) && p.includes(es)) ||
-          (mode === "official" && !officialNameOk(t))
-        );
-      });
-      fill(errors, false);
-      fill(
-        arr.filter((o) => !o.tags["name:ca"] || !o.tags["name:es"]),
-        true
-      );
+      fill(reviews.filter(({ result }) => result.listError), false);
+      fill(reviews.filter(({ result }) => result.missingTags), true);
       Object.entries(CAT).forEach(
         ([k, c]) => ($(c.count).textContent = `(${count[k]}) `)
       );
@@ -856,22 +751,22 @@
   };
   const fill = (arr, missing) => {
     arr.sort((a, b) =>
-      value(a?.tags || {}).localeCompare(value(b?.tags || {}))
+      a.result.base.localeCompare(b.result.base)
     );
     const box = $(missing ? "missingList" : "list"),
       ul = box.querySelector("ul");
     ul.innerHTML = "";
     setEmpty(box, !arr.length);
-    arr.forEach((o) => {
+    arr.forEach(({ record: o, result }) => {
       const t = o.tags || {},
         ca = t["name:ca"]?.trim() || "🚫",
         es = t["name:es"]?.trim() || "🚫",
-        s = value(t),
-        p = s && parts(s),
+        s = result.base,
+        p = result.parts,
         name = (t.name || "").trim() || "🚫",
-        nameOk = mode !== "official" || officialNameOk(t),
+        nameOk = result.officialNameOk,
         li = document.createElement("li"),
-        base = s ? formatBase(s, ca, es) : "🚫";
+        base = s ? formatBase(result, ca, es) : "🚫";
       li.innerHTML = missing
         ? `<span class="colBase">${base}</span><span class="colName ${nameOk ? "match" : "nomatch"}">${formatMultivalue(name)}</span><span>${formatMultivalue(ca)}</span><span>${formatMultivalue(es)}</span>`
         : `<span class="colBase">${base}</span><span class="colName ${nameOk ? "match" : "nomatch"}">${formatMultivalue(name)}</span><span class="${p?.includes(ca) ? "match" : "nomatch"}">${formatMultivalue(ca)}</span><span class="${p?.includes(es) ? "match" : "nomatch"}">${formatMultivalue(es)}</span>`;

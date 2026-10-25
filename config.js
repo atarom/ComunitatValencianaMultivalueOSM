@@ -16,7 +16,7 @@ e.osm_type, e.osm_id, e.tags, ST_Centroid(ST_Envelope(e.geom)) AS geom
 FROM postpass_pointlinepolygon e
 JOIN region r ON e.geom && r.geom AND ST_Intersects(e.geom, r.geom)
 WHERE e.geom && ST_MakeEnvelope(-2.5, 37, 2, 42, 4326)
-AND e.tags->>'name' LIKE '%/%'
+AND (e.tags->>'name' LIKE '%/%' OR e.tags->>'name' LIKE '%;%')
 AND (
 e.tags ? 'leisure'
 OR (
@@ -37,7 +37,7 @@ e.osm_type, e.osm_id, e.tags, ST_Centroid(ST_Envelope(e.geom)) AS geom
 FROM postpass_pointlinepolygon e
 JOIN region r ON e.geom && r.geom AND ST_Intersects(e.geom, r.geom)
 WHERE e.geom && ST_MakeEnvelope(-2.5, 37, 2, 42, 4326)
-AND e.tags->>'official_name' LIKE '%/%'
+AND (e.tags->>'official_name' LIKE '%/%' OR e.tags->>'official_name' LIKE '%;%')
 AND (
 e.tags ? 'leisure'
 OR (
