@@ -14,8 +14,7 @@ export const validate = (tags = {}, mode = "name") => {
   }
   const separatorCount = separators.length;
   const badSep = separators.some((separator) => !separator.valid);
-  const missingTags = !tags["name:ca"] || !tags["name:es"];
-  const missing = !ca || !es;
+  const missingTags = !ca || !es;
   const duplicateParts = parts.length > 1 && parts.every((part) => part === parts[0]);
   const duplicate = !!(base && !badSep && separatorCount <= 1 && ca && es && duplicateParts);
   const includes = !!(base && ca && es && parts.includes(ca) && parts.includes(es));
@@ -31,5 +30,5 @@ export const validate = (tags = {}, mode = "name") => {
   else if (!parts.includes(ca) || !parts.includes(es) || (first !== ca && first !== es) || !officialNameOk) key = "cP";
   else key = first === ca ? "cY" : "cR";
   const listError = !missingTags && (!base || separatorCount > 1 || badSep || duplicateParts || !parts.includes(ca) || !parts.includes(es) || !officialNameOk);
-  return { base, ca, es, parts, separators, separatorCount, badSep, missingTags, missing, duplicate, includes, officialNameOk, key, listError };
+  return { base, ca, es, parts, separators, separatorCount, badSep, missingTags, duplicate, includes, officialNameOk, key, listError };
 };

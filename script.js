@@ -480,7 +480,7 @@ import { validate } from "./validation.js";
       tags.name = name || "";
     } else tags.name = base || "";
     const result = validate(tags, tm);
-    const { base: s, ca: caT, es: esT, separatorCount: sl, badSep: bad, missing, duplicate: dup, includes, officialNameOk: exp, key } = result;
+    const { base: s, ca: caT, es: esT, separatorCount: sl, badSep: bad, missingTags: missing, duplicate: dup, includes, officialNameOk: exp, key } = result;
     return {
       key,
       preview: s ? formatBase(result, caT || "🚫", esT || "🚫") : "🚫",

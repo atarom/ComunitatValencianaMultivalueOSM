@@ -1,8 +1,5 @@
 :root {
   --bg: #17191d;
-  --surface: #20242a;
-  --surface2: #292e35;
-  --surface3: #313740;
   --txt: #f3f4f2;
   --mut: #aab1ba;
   --bd: #ffffff18;
@@ -11,7 +8,6 @@
   --yellow: #f6c928;
   --red: #d7463f;
   --med: #35b7ad;
-  --neo: #2496c8;
   --w06: #ffffff0f;
   --w08: #ffffff14;
   --w10: #ffffff1a;
