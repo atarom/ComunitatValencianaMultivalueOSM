@@ -26,86 +26,26 @@ import { validate } from "./validation.js";
     vectorLayer,
     mode = "",
     boot = false,
-    samples = null,
     loadSeq = 0,
     loadCtrl = null,
     overlayTimer = 0,
     cooldownTicker = 0;
   const cooldownUntil = { name: 0, official: 0 };
-  const ex = { name: [], official: [] };
   const $ = (id) => document.getElementById(id);
   const $$ = (s) => [...document.querySelectorAll(s)];
   const records = new Map();
-  const CAT = {
-    cY: {
-      color: "yellow",
-      test: "#f6e35b",
-      label: "PredLingCA",
-      count: "countYellow",
-      toggle: "toggleYellow"
-    },
-    cR: {
-      color: "red",
-      test: "#ff5959",
-      label: "PredLingES",
-      count: "countRed",
-      toggle: "toggleRed"
-    },
-    cP: {
-      color: "#8e44ad",
-      test: "#b07bd6",
-      label: "NoCoincident",
-      count: "countPurple",
-      toggle: "togglePurple"
-    },
-    cB: {
-      color: "#8b4513",
-      test: "#c16e2a",
-      label: "Falta :ca/:es",
-      count: "countBrown",
-      toggle: "toggleBrown"
-    },
-    cO: {
-      color: "#FFD580",
-      test: "#ffd08a",
-      label: "Separador no estàndard",
-      count: "countOrange",
-      toggle: "toggleOrange"
-    },
-    cM: {
-      color: "#4dd0e1",
-      test: "#4dd0e1",
-      label: "Més d'un separador",
-      count: "countCyan",
-      toggle: "toggleCyan"
-    },
-    cD: {
-      color: "#ff5bd6",
-      test: "#ff5bd6",
-      label: "Duplicat",
-      count: "countPink",
-      toggle: "togglePink"
-    }
-  };
-  const TEST = {
-    name: {
-      base: "t_name_base",
-      ca: "t_name_ca",
-      es: "t_name_es",
-      badge: "t_name_badge",
-      prev: "t_name_prev",
-      log: "t_name_log"
-    },
-    official: {
-      base: "t_off_base",
-      name: "t_off_name",
-      ca: "t_off_ca",
-      es: "t_off_es",
-      badge: "t_off_badge",
-      prev: "t_off_prev",
-      log: "t_off_log"
-    }
-  };
+  const CAT = Object.fromEntries([
+    ["cY", "yellow", "#f6e35b", "PredLingCA", "Yellow"],
+    ["cR", "red", "#ff5959", "PredLingES", "Red"],
+    ["cP", "#8e44ad", "#b07bd6", "NoCoincident", "Purple"],
+    ["cB", "#8b4513", "#c16e2a", "Falta :ca/:es", "Brown"],
+    ["cO", "#FFD580", "#ffd08a", "Separador no estàndard", "Orange"],
+    ["cM", "#4dd0e1", "#4dd0e1", "Més d'un separador", "Cyan"],
+    ["cD", "#ff5bd6", "#ff5bd6", "Duplicat", "Pink"]
+  ].map(([key, color, test, label, name]) => [key, {
+    color, test, label, count: `count${name}`, toggle: `toggle${name}`
+  }]));
+  const testId = (tm, key) => `t_${tm === "official" ? "off" : "name"}_${key}`;
   const baseKey = () => (mode === "official" ? "official_name" : "name");
   const value = (t) => t?.[baseKey()] || "";
   const esc = (s) =>
@@ -138,7 +78,7 @@ import { validate } from "./validation.js";
     Math.max(1, Number(config.postpass?.etaSeconds) || 35);
   const cacheTTL = () =>
     Math.max(0, Number(config.postpass?.cacheSeconds) || 180);
-  const exceptions = () => ex[mode] || [];
+  const exceptions = () => config.exceptions?.[mode] || [];
   const coords = (o) => {
     const c = o?.center || o || {};
     return { x: Number(c.lon), y: Number(c.lat) };
@@ -189,9 +129,7 @@ import { validate } from "./validation.js";
         badge = label.querySelector(".cooldownTime");
       label.classList.toggle("cooling", remaining > 0);
       if (mode === tm)
-        label.querySelector("span").firstChild.textContent = remaining
-          ? `En memòria cau · ${tm === "official" ? "official_name" : "name"}`
-          : `Tornar a processar · ${tm === "official" ? "official_name" : "name"}`;
+        label.querySelector("span").firstChild.textContent = `${remaining ? "En memòria cau" : "Tornar a processar"} · ${tm === "official" ? "official_name" : "name"}`;
       if (remaining) {
         label.style.setProperty(
           "--cooldown-progress",
@@ -219,20 +157,13 @@ import { validate } from "./validation.js";
     $("app").dataset.mode = mode || "await";
     $$(".hKey").forEach((x) => (x.textContent = baseKey()));
     if (mode)
-      $("exceptionsBody").innerHTML =
-        `<h2>Excepcions · ${esc(mode === "official" ? "official_name multivalor" : "name multivalor")}</h2><ul>${exceptions()
-          .map((x) => `<li>${esc(x)}</li>`)
-          .join("")}</ul>`;
+      $("exceptionsBody").innerHTML = `<h2>Excepcions · ${esc(baseKey())} multivalor</h2><ul>${exceptions().map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`;
     $("modeHint").style.display = mode ? "none" : "block";
     $$("#modeBar .modeOpt").forEach((l) => {
       const i = l.querySelector("input"),
         s = l.querySelector("span"),
         k = i.value === "official" ? "official_name" : "name";
-      const title = !mode
-        ? `Mode ${k} multivalor`
-        : i.value === mode
-          ? `Tornar a processar · ${k}`
-          : `Canviar a · ${k}`;
+      const title = !mode ? `Mode ${k} multivalor` : `${i.value === mode ? "Tornar a processar" : "Canviar a"} · ${k}`;
       s.innerHTML = `${title}<small class="cooldownTime" aria-hidden="true"></small>`;
     });
     refreshCooldownUI();
@@ -243,13 +174,11 @@ import { validate } from "./validation.js";
       const s = text.trim();
       return s ? `<span class="${s === ca || s === es ? "match" : "nomatch"}">${esc(s)}</span>` : "";
     };
-    let html = "",
-      from = 0;
-    result.separators.forEach(({ index, char, valid }) => {
-      html += piece(result.base.slice(from, index));
-      html += valid ? "<br>" : `<span class="errorSlash">${esc(char)}</span>`;
+    let html = "", from = 0;
+    for (const { index, char, valid } of result.separators) {
+      html += piece(result.base.slice(from, index)) + (valid ? "<br>" : `<span class="errorSlash">${esc(char)}</span>`);
       from = index + 1;
-    });
+    }
     return html + piece(result.base.slice(from));
   };
   const queryObject = (e) => {
@@ -268,11 +197,7 @@ import { validate } from "./validation.js";
       : `<a href="${href}" target="_blank" rel="noopener">${label}</a>`;
   const popupHtml = (e) => {
     const t = e.tags || {},
-      title = esc(
-        (mode === "official"
-          ? t.official_name || t.name
-          : t.name || t.official_name) || ""
-      ),
+      title = esc(t[baseKey()] || t.name || t.official_name || ""),
       rows = Object.entries(t)
         .sort(([a], [b]) => a.localeCompare(b))
         .map(
@@ -301,9 +226,7 @@ import { validate } from "./validation.js";
     root.className = "ol-unselectable ol-control legendCtl";
     pane.className = "legendPane";
     const toggle = document.createElement("button");
-    toggle.type = "button";
-    toggle.className = "legendToggle";
-    toggle.textContent = "Capes";
+    Object.assign(toggle, { type: "button", className: "legendToggle", textContent: "Capes" });
     toggle.setAttribute("aria-controls", "filters");
     toggle.setAttribute("aria-expanded", "false");
     toggle.onclick = () => {
@@ -321,18 +244,10 @@ import { validate } from "./validation.js";
       const input = l.querySelector("input"),
         dot = l.querySelector(".dot"),
         count = l.querySelector('span[id^="count"]'),
-        text = [...l.childNodes]
-          .filter((n) => n.nodeType === 3)
-          .map((n) => n.textContent)
-          .join(" ")
-          .replace(/\s+/g, " ")
-          .trim(),
-        label =
-          l.querySelector(".ltxt") ||
-          Object.assign(document.createElement("span"), { className: "ltxt" });
-      [...l.childNodes]
-        .filter((n) => n.nodeType === 3)
-        .forEach((n) => n.remove());
+        textNodes = [...l.childNodes].filter((n) => n.nodeType === 3),
+        text = textNodes.map((n) => n.textContent).join(" ").replace(/\s+/g, " ").trim(),
+        label = l.querySelector(".ltxt") || Object.assign(document.createElement("span"), { className: "ltxt" });
+      textNodes.forEach((n) => n.remove());
       label.textContent = text;
       [input, dot, label, count]
         .filter(Boolean)
@@ -349,8 +264,7 @@ import { validate } from "./validation.js";
     return root;
   };
   const setEmpty = (box, on) => {
-    const msg = box.querySelector(".emptyMsg"),
-      list = box.querySelector("ul");
+    const msg = box.querySelector(".emptyMsg"), list = box.querySelector("ul");
     if (msg) msg.style.display = on ? "block" : "none";
     if (list) list.style.display = on ? "none" : "block";
   };
@@ -378,13 +292,14 @@ import { validate } from "./validation.js";
     new Request(
       `${location.origin}${location.pathname}?postpass-cache=${encodeURIComponent(`${tm}-${cacheHash(q)}`)}`
     );
-  const cacheGet = async (tm, q) => {
+  const openCache = () => {
     if (!("caches" in window)) throw Error("Cache Storage no està disponible");
+    return caches.open(config.postpass?.cacheName || "cv-multivalue-postpass-v1");
+  };
+  const cacheGet = async (tm, q) => {
     const ttl = cacheTTL();
     if (!ttl) return null;
-    const cache = await caches.open(
-      config.postpass?.cacheName || "cv-multivalue-postpass-v1"
-    );
+    const cache = await openCache();
     const request = cacheRequest(tm, q);
     const response = await cache.match(request);
     if (!response) return null;
@@ -397,10 +312,7 @@ import { validate } from "./validation.js";
     return { data: payload.data, ageSeconds: Math.floor(age / 1000), expiresAt: Number(payload.timestamp) + ttl * 1000 };
   };
   const cacheSet = async (tm, q, data) => {
-    if (!("caches" in window)) throw Error("Cache Storage no està disponible");
-    const cache = await caches.open(
-      config.postpass?.cacheName || "cv-multivalue-postpass-v1"
-    );
+    const cache = await openCache();
     const timestamp = Date.now();
     await cache.put(
       cacheRequest(tm, q),
@@ -507,28 +419,20 @@ import { validate } from "./validation.js";
     };
   };
   const paintTester = (tm) => {
-    const f = TEST[tm],
-      r = testerRun(
-        tm,
-        $(f.base).value,
-        f.name ? $(f.name).value : "",
-        $(f.ca).value,
-        $(f.es).value
-      );
-    $(f.badge).innerHTML =
-      `<i style="background:${CAT[r.key].test}"></i>${esc(CAT[r.key].label)}`;
-    $(f.prev).innerHTML = r.preview;
-    $(f.log).textContent = r.log;
+    const field = (key) => $(testId(tm, key)),
+      r = testerRun(tm, field("base").value, tm === "official" ? field("name").value : "", field("ca").value, field("es").value);
+    field("badge").innerHTML = `<i style="background:${CAT[r.key].test}"></i>${esc(CAT[r.key].label)}`;
+    field("prev").innerHTML = r.preview;
+    field("log").textContent = r.log;
   };
   const initTester = () => {
-    Object.entries(TEST).forEach(([tm, f]) => {
-      const s = samples?.[tm] || {};
-      Object.entries(f)
-        .filter(([k]) => ["base", "name", "ca", "es"].includes(k))
-        .forEach(([k, id]) => {
-          $(id).value = s[k] || "";
-          $(id).addEventListener("input", () => paintTester(tm));
-        });
+    ["name", "official"].forEach((tm) => {
+      const sample = config.testerSamples?.[tm] || {};
+      ["base", ...(tm === "official" ? ["name"] : []), "ca", "es"].forEach((key) => {
+        const input = $(testId(tm, key));
+        input.value = sample[key] || "";
+        input.addEventListener("input", () => paintTester(tm));
+      });
       paintTester(tm);
     });
     $("testerBox").addEventListener("click", (e) => {
@@ -620,23 +524,17 @@ import { validate } from "./validation.js";
     }
   };
   const bindUI = () => {
-    const toggleData = (id, key) => {
-      $(id).onclick = () => {
-        const app = $("app");
-        if (app.dataset[key] === "1") delete app.dataset[key];
-        else app.dataset[key] = "1";
+    [["ex", "infoIcon", "exceptionsClose", "exceptionsModal"], ["test", "testIcon", "testerClose", "testerModal"]].forEach(([key, icon, close, modal]) => {
+      $(icon).onclick = () => {
+        const data = $("app").dataset;
+        if (data[key] === "1") delete data[key];
+        else data[key] = "1";
       };
-    };
-    toggleData("infoIcon", "ex");
-    toggleData("testIcon", "test");
-    $("exceptionsClose").onclick = () => delete $("app").dataset.ex;
-    $("testerClose").onclick = () => delete $("app").dataset.test;
-    $("exceptionsModal").onclick = (e) => {
-      if (e.target === $("exceptionsModal")) delete $("app").dataset.ex;
-    };
-    $("testerModal").onclick = (e) => {
-      if (e.target === $("testerModal")) delete $("app").dataset.test;
-    };
+      $(close).onclick = () => delete $("app").dataset[key];
+      $(modal).onclick = (e) => {
+        if (e.target === $(modal)) delete $("app").dataset[key];
+      };
+    });
     $("ovClose").onclick = () => {
       cancelOverlayTimer();
       $("overlay").style.display = "none";
@@ -708,11 +606,7 @@ import { validate } from "./validation.js";
     loadCtrl = ctrl;
     clear();
     const count = Object.fromEntries(Object.keys(CAT).map((k) => [k, 0]));
-    showOverlay(
-      "Preparant…",
-      `Mode: ${mode === "official" ? "official_name multivalor" : "name multivalor"}`,
-      true
-    );
+    showOverlay("Preparant…", `Mode: ${baseKey()} multivalor`, true);
     try {
       const q = makeQuery(mode);
       if (!q) throw Error(`No hi ha consulta Postpass configurada per a ${mode}`);
@@ -755,9 +649,7 @@ import { validate } from "./validation.js";
     }
   };
   const fill = (arr, missing) => {
-    arr.sort((a, b) =>
-      a.result.base.localeCompare(b.result.base)
-    );
+    arr.sort((a, b) => a.result.base.localeCompare(b.result.base));
     const box = $(missing ? "missingList" : "list"),
       ul = box.querySelector("ul");
     ul.innerHTML = "";
@@ -766,15 +658,11 @@ import { validate } from "./validation.js";
       const t = o.tags || {},
         ca = t["name:ca"]?.trim() || "🚫",
         es = t["name:es"]?.trim() || "🚫",
-        s = result.base,
-        p = result.parts,
         name = (t.name || "").trim() || "🚫",
-        nameOk = result.officialNameOk,
         li = document.createElement("li"),
-        base = s ? formatBase(result, ca, es) : "🚫";
-      li.innerHTML = missing
-        ? `<span class="colBase">${base}</span><span class="colName ${nameOk ? "match" : "nomatch"}">${formatMultivalue(name)}</span><span>${formatMultivalue(ca)}</span><span>${formatMultivalue(es)}</span>`
-        : `<span class="colBase">${base}</span><span class="colName ${nameOk ? "match" : "nomatch"}">${formatMultivalue(name)}</span><span class="${p?.includes(ca) ? "match" : "nomatch"}">${formatMultivalue(ca)}</span><span class="${p?.includes(es) ? "match" : "nomatch"}">${formatMultivalue(es)}</span>`;
+        base = result.base ? formatBase(result, ca, es) : "🚫";
+      const languageCell = (text) => `<span${missing ? "" : ` class="${result.parts?.includes(text) ? "match" : "nomatch"}"`}>${formatMultivalue(text)}</span>`;
+      li.innerHTML = `<span class="colBase">${base}</span><span class="colName ${result.officialNameOk ? "match" : "nomatch"}">${formatMultivalue(name)}</span>${languageCell(ca)}${languageCell(es)}`;
       li.onclick = () => {
         const c = coords(o);
         if (!validCoord(c)) return;
@@ -797,9 +685,6 @@ import { validate } from "./validation.js";
     }));
   };
   const start = () => {
-    ex.name = config.exceptions?.name || [];
-    ex.official = config.exceptions?.official || [];
-    samples = config.testerSamples || null;
     modeUI();
     restoreCooldowns();
     initTester();
