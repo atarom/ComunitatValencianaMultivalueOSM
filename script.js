@@ -280,15 +280,20 @@ import { validate } from "./validation.js";
             `<span class="k">${esc(k)}</span><span class="v">${esc(v)}</span>`
         )
         .join(""),
-      raw = queryObject(e),
-      q = encodeURIComponent(raw);
-    return `<div class="pop"><div class="pt">${title}</div><div class="ptags">${rows}</div><div class="pact">${link(`https://www.osm.org/${e.type}/${e.id}`, "👁️ Veure")}${link(`https://www.osm.org/edit?${e.type}=${e.id}`, "✏️ Editar")}${link("#", "🧩 JOSM", "josmOne", "o", `${e.type}${e.id}`)}${link("#", "🧩 JOSM tot", "josmAll", "q", q)}${link(`https://overpass-turbo.eu/?Q=${encodeURIComponent(raw)}&R&c`, "🧪 Overpass")}</div></div>`;
+      raw = queryObject(e);
+    return `<div class="pop"><div class="pt">${title}</div><div class="ptags">${rows}</div><div class="pact">${link(`https://www.osm.org/${e.type}/${e.id}`, "👁️ Veure")}${link(`https://www.osm.org/edit?${e.type}=${e.id}`, "✏️ Editar")}${link("#", "🧩 JOSM", "josmOne", "o", `${e.type}${e.id}`)}${link("#", "🧩 JOSM tot", "josmAll", "id", uid(e))}${link(`https://overpass-turbo.eu/?Q=${encodeURIComponent(raw)}&R&c`, "🧪 Overpass")}</div></div>`;
   };
   const josm = (o) => fetch(`http://127.0.0.1:8111/load_object?objects=${o}`);
-  const josmAll = (q) =>
-    fetch(
-      `http://127.0.0.1:8111/import?url=${encodeURIComponent(config.overpass.instance + "?data=" + q)}`
-    );
+  const josmAll = (key) => {
+    const chosen = records.get(key);
+    if (!chosen) return;
+    const tags = mode === "official" ? ["official_name", "name", "name:ca", "name:es"] : ["name", "name:ca", "name:es"];
+    const objects = [...records.values()]
+      .filter((o) => tags.every((tag) => o.tags?.[tag] === chosen.tags?.[tag]))
+      .map((o) => `${o.type}${o.id}`)
+      .join(",");
+    return josm(objects);
+  };
   const makeLegend = () => {
     const root = document.createElement("div"),
       pane = document.createElement("div"),
@@ -652,7 +657,7 @@ import { validate } from "./validation.js";
       const t = e.target;
       if (t.classList?.contains("josmAll")) {
         e.preventDefault();
-        josmAll(t.dataset.q);
+        josmAll(t.dataset.id);
       } else if (t.classList?.contains("josmOne")) {
         e.preventDefault();
         josm(t.dataset.o);
