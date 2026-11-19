@@ -8,7 +8,7 @@ export const validate = (tags = {}, mode = "name") => {
     const char = base[i];
     if (char !== "/" && char !== ";") continue;
     const valid = char === ";"
-      ? i > 0 && i < base.length - 1 && !/\s/.test(base[i - 1]) && !/\s/.test(base[i + 1])
+      ? i > 0 && i < base.length - 1 && ((base[i - 1] !== " " && !/\s/.test(base[i - 1]) && (base[i + 1] !== " " && !/\s/.test(base[i + 1]) || base[i + 1] === " " && i + 2 < base.length && !/\s/.test(base[i + 2]))) || (base[i - 1] === " " && i > 1 && !/\s/.test(base[i - 2]) && base[i + 1] === " " && i + 2 < base.length && !/\s/.test(base[i + 2])))
       : i > 0 && i < base.length - 1 && base[i - 1] === " " && base[i + 1] === " " && base[i - 2] !== " " && base[i + 2] !== " ";
     separators.push({ index: i, char, valid });
   }
